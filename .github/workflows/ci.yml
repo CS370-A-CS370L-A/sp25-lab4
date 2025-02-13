@@ -1,0 +1,49 @@
+name: Grade Java Code
+
+on: [push]
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Install xmllint
+        run: sudo apt-get install -y libxml2-utils
+
+      - name: Run Maven tests
+        run: |
+          mvn test -Dmaven.test.failure.ignore=true || echo "COMPILATION_FAILED" > compilation_status.txt
+
+      - name: Generate Grade
+        run: |
+          if [ -f "compilation_status.txt" ]; then
+            echo "Grade: 0 (Compilation failed)" > grade.txt
+          else
+            FAIL_COUNT=0
+            ERROR_COUNT=0
+            REPORTS=("target/surefire-reports/TEST-edu.whitman.LinkedListTest.xml" "target/surefire-reports/TEST-edu.whitman.NodeTest.xml")
+
+            for FILE in "${REPORTS[@]}"; do
+              if [ -f "$FILE" ]; then
+                FAIL_COUNT=$((FAIL_COUNT + $(xmllint --xpath 'string(//testsuite/@failures)' "$FILE" 2>/dev/null || echo "0")))
+                ERROR_COUNT=$((ERROR_COUNT + $(xmllint --xpath 'string(//testsuite/@errors)' "$FILE" 2>/dev/null || echo "0")))
+              fi
+            done
+
+            if [ "$FAIL_COUNT" -eq 0 ] && [ "$ERROR_COUNT" -eq 0 ]; then
+              echo "Grade: 1 (All tests passed)" > grade.txt
+            else
+              echo "Grade: 0 ($FAIL_COUNT test(s) failed, $ERROR_COUNT error(s))" > grade.txt
+            fi
+          fi
+
+      - name: Show Grade
+        run: cat grade.txt
